@@ -23,11 +23,13 @@ public final class AsyncProfiler {
     private final File lib;
     private final File exe;
     private final String agentConfig;
+    private final OutputType outputType;
 
-    private AsyncProfiler(File lib, File exe, String agentConfig) {
+    private AsyncProfiler(File lib, File exe, String agentConfig, OutputType outputType) {
         this.lib = lib;
         this.exe = exe;
         this.agentConfig = agentConfig;
+        this.outputType = outputType;
     }
 
     public List<String> createJavaProfiledRunCommand(String[] baseCommand) {
@@ -52,7 +54,7 @@ public final class AsyncProfiler {
             if (!Files.exists(profilingOutputDir.toPath())) {
                 Files.createDirectory(profilingOutputDir.toPath());
             }
-            String profilerOutputFullPath = profilingOutputDir.getAbsolutePath() + File.separator + mvnCmds.name().toLowerCase() + "-run-" + id + ".html";
+            String profilerOutputFullPath = profilingOutputDir.getAbsolutePath() + File.separator + mvnCmds.name().toLowerCase() + "-run-" + id + '.' + outputType.name();
             LOGGER.infof("Attaching profiler agent to the JVM process. Output HTML: %s", profilerOutputFullPath);
             LOGGER.info("Stopping the profiler agent...");
             Process stopProfiling = runCommand(List.of(exe.getAbsolutePath(), "stop", "-f", profilerOutputFullPath, "" + app.pid()), appDir, null);
@@ -117,7 +119,23 @@ public final class AsyncProfiler {
         if (!soLib.exists() || !soLib.isFile()) {
             throw new IllegalStateException("libasyncProfiler.so not found on : " + soLib.getAbsolutePath());
         }
-        return Optional.of(new AsyncProfiler(soLib, asProf, getAsyncProfilerAgentConfig()));
+        return Optional.of(new AsyncProfiler(soLib, asProf, getAsyncProfilerAgentConfig(), getAsyncProfilerOutputType()));
+    }
+
+    public enum OutputType {
+        collapsed, jfr, html, folded, svg
+    }
+
+    private static OutputType getAsyncProfilerOutputType() {
+        String apConfig = System.getenv().get("ASYNC_PROFILER_OUTPUT_TYPE");
+        if (StringUtils.isNotBlank(apConfig)) {
+            return OutputType.valueOf(apConfig);
+        }
+        apConfig = System.getProperty("ASYNC_PROFILER_OUTPUT_TYPE");
+        if (StringUtils.isNotBlank(apConfig)) {
+            return OutputType.valueOf(apConfig);
+        }
+        return OutputType.html;
     }
 
     private static String getAsyncProfilerAgentConfig() {
